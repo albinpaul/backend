@@ -23,7 +23,7 @@ const client = new MongoClient(uri, {
 });
 
 
-app.get(googleTokenVerify);
+app.use(googleTokenVerify);
 
 app.get('/getUsers', async (req, res) => {
   await client.connect();
@@ -35,14 +35,13 @@ app.get('/getUsers', async (req, res) => {
     console.log("item")
     console.log(doc)
   })
-  await client.close()
   res.status(200).json({ "message": "interesting" })
-
 });
 
 app.post("/addUsers", (req, res) => {
-  console.log(req.body)
-
+  console.log(res.locals.uid)
+    
+  res.status(200).json({ "message": "interesting" })
 })
 
 io.on('connection', (socket) => {
