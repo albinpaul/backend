@@ -10,7 +10,6 @@ const googleTokenVerify = async (req, res, next) => {
   
   await auth.verifyIdToken(token)
     .then((decodedToken) => {
-      // console.log(decodedToken)
       res.locals.uid = decodedToken.uid
       next()
     }).catch((error) => {
