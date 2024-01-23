@@ -4,6 +4,7 @@ const corsOptions = require("../creds/corsOptions");
 const { auth } = require("../apps/firebase")
 const { v4: uuidv4 } = require('uuid');
 const client = require("./mongo_db");
+const { create_game } = require("../games/memoryGame");
 
 const io = new Server(server, {
     cors: {
@@ -52,6 +53,7 @@ io.on('connection', async (socket) => {
             console.log(error)
             socket.disconnect()
         })
+
     const join_room = async (room_id, uid) => {
         await usersCollection.findOneAndUpdate(
             { uid: uid },
@@ -60,15 +62,31 @@ io.on('connection', async (socket) => {
             console.log("created room " + room_id)
         }).catch(console.error)
 
-        await roomCollection.insertOne({
-            room_id: room_id,
-            users: [uid],
-            admin: [uid],
-            games: []
-        })
-            .then(() => {
-                console.log("created room " + room_id)
-            }).catch(console.error)
+
+        await roomCollection.updateOne(
+            {
+                room_id: room_id,
+                users: [uid],
+                games: []
+            },
+            {
+                $addToSet: {
+                    users: uid,
+                }
+            }
+        )
+
+        .then(() => {
+            console.log("created room " + room_id)
+        }).catch(console.error)
+    }
+    const updateSockets = async (room_id) => {
+        let sockets = await io.in(room_id).fetchSockets()
+        let names = []
+        for (let tsocket of sockets) {
+            names.push(tsocket.displayName)
+        }
+        io.to(room_id).emit("send_client_names", names)
     }
     socket.on("join_room", async (room_id, callback) => {
         console.log("joining room", socket.uid, socket.displayName, room_id)
@@ -77,16 +95,6 @@ io.on('connection', async (socket) => {
         if(callback instanceof Function){
             callback()
         }
-
-    });
-    socket.on("get_clients", async (room_id) => {
-        // console.log("getting clients", room_id)
-        let sockets = await io.in(room_id).fetchSockets()
-        let names = []
-        for (let tsocket of sockets) {
-            names.push(tsocket.displayName)
-        }
-        socket.emit("send_client_names", names)
     });
     socket.on("create_room", async (callback) => {
         let room_id = uuidv4()
@@ -120,7 +128,13 @@ io.on('connection', async (socket) => {
             console.log("no rooms")
             socket.emit("recieve_rooms", rooms)
         }
-
+    });
+    socket.on("get_connected_sockets", async (room_id)=>{
+        await updateSockets(room_id)
+    })
+    socket.on("create_game", async (room_id) => {
+        await client.db("memory").collection("game").deleteMany({})
+        create_game(room_id)    
     });
 });
 module.exports = io
