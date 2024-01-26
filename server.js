@@ -6,6 +6,7 @@ var cors = require('cors')
 var corsOptions = require('./creds/corsOptions')
 const {app, server}= require("./apps/express")
 const io = require("./apps/socket_io")
+require("./middlewares/logToFile")
 
 app.use(bodyParser.json())
 app.use(cors(corsOptions))
