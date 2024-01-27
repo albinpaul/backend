@@ -1,16 +1,15 @@
 const { server } = require("../apps/express")
 const { Server } = require('socket.io');
-const corsOptions = require("../creds/corsOptions");
 const { auth } = require("../apps/firebase")
 const { v4: uuidv4 } = require('uuid');
 const client = require("./mongo_db");
-const { create_game, pickFirstCard, getGameState, pickCard, enableTurn } = require("../games/memoryGame");
+const { create_game, getGameState, pickCard, enableTurn } = require("../games/memoryGame");
 const e = require("express");
 const { ObjectId } = require("mongodb");
 
 const io = new Server(server, {
     cors: {
-        origin: corsOptions.origin,
+        origin: process.env.COORD_ORIGIN,
         methods: ["GET", "POST"]
     }
 });
