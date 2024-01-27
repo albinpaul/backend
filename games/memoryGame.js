@@ -66,6 +66,23 @@ const shuffle = (array) => {
 };
 
 
+const processState = (state) => {
+    let currentState = []
+    if(state){
+        let gameState = state.state
+        let pickedStates = state.pickedCards
+        for(let s = 0; s < gameState.length; s++){
+            if(pickedStates[s])
+            {
+                currentState.push(gameState[s])
+            } else {
+                currentState.push([])
+            }
+        }
+    }
+    return currentState
+}
+
 const getGameState = async (game_id) => { 
     console.log("gameid is " + game_id)
     let state = await client.db("memory")
@@ -74,22 +91,14 @@ const getGameState = async (game_id) => {
         {
             _id: new ObjectId(game_id)
         })
-    let currentState = []
-    if(state){
-        let gameState = state.state
-        let pickedStates = state.pickedCards
-        for(let s = 0; s < gameState.length; s++){
-            currentState.push(gameState[s] * pickedStates[s])
-        }
-    }
-    return currentState
+    return processState(state)
 }
 
 const create_game = async (room_id, io) => {
     let gameState = []
     let pickedCards = []
     for (let i = 0; i < CARDS.length; i++) {
-        gameState.push(i + 1)
+        gameState.push(CARDS[i])
         pickedCards.push(0)
     }
     gameState = shuffle(gameState)
@@ -141,7 +150,34 @@ const create_game = async (room_id, io) => {
 }
 
 
-const pickCard = async(card_id, game_id, socket, io) => {
+    const enableTurn = async (turn_id, room_id, users, io) => {
+        console.log(io)
+        let sockets = await io.in(room_id).fetchSockets()
+        for(let tsocket of sockets) {
+            console.log("checking turn for " + tsocket.uid)
+            if(tsocket.uid == users[turn_id]){
+                console.log("enabling turn for " + tsocket.uid)
+                console.log(tsocket.id)
+                
+                
+                tsocket.emitWithAck("set_turn", 1, (error, response) => {
+                    console.log("response of turn");
+                    if (error) {
+                        console.log("error");
+                        console.log(error);
+                    } else {
+                        console.log("response");
+                        console.log(response);
+                    }
+                })
+            } else {
+                tsocket.emit("set_turn", 0)
+            }
+        }
+
+}
+
+const pickCard = async(card_id, cardArray, game_id, socket, io) => {
     let game = await client.db("memory").collection("game").findOne({
         _id: new ObjectId(game_id)
     })
@@ -157,39 +193,67 @@ const pickCard = async(card_id, game_id, socket, io) => {
 
     // ]
     if(game.move == 0){
+        console.log("first card")
         game.pickedCards[card_id] = 1;
         game.moves.push({
            card_id: card_id,
-           underlying_card: CARDS[game.state[card_id]]
+           underlying_card: game.state[card_id]
         })
-    } else {
-        let moves = game.moves
-        let lastMove = moves[moves.length - 1]
-        socket.emit()
-        console.log("lastMove")
-        console.log(lastMove)
-        let currentCard = CARD[game.state[card_id]]
-        if(currentCard[0] == lastMove.underlying_card){
-            game.move = 0
-            game.points[socket.uid]++
-        }
-    }
-
-    await client.db("memory").collection("game").replaceOne({
-            _id: new ObjectId(game_id)
-        },
-        game
-    )
-
-    if(game.move == 0) {
-        //firetCard
         game.move ^= 1
-        let gameState = await getGameState()
+        let gameState = processState(game)
         console.log("sending game state", gameState)
         io.to(game.room_id).emit("emitted_current_state", gameState)
     } else {
-
+        console.log("second card")
+        let moves = game.moves
+        let lastMove = moves[moves.length - 1]
+        game.moves.push({
+           card_id: card_id,
+           underlying_card: game.state[card_id]
+        })
+        console.log("lastMove")
+        console.log(lastMove)
+        let currentCard = game.state[card_id]
+        console.log(currentCard, lastMove.underlying_card)
+        if(currentCard[0] == lastMove.underlying_card[0]){
+            console.log("equal cards picked")
+            game.pickedCards[card_id] = 1;
+            game.move = 0
+            game.points[socket.uid]+=1
+            let gameState = processState(game)
+            io.to(game.room_id).emit("emitted_current_state", gameState)
+            socket.emit("update_points", game.points[socket.uid])
+        } else {
+            console.log("different cards picked")
+            game.move = 0
+            setTimeout(async () => {
+                game.pickedCards[card_id] = 0;
+                game.pickedCards[lastMove.card_id] = 0
+                console.log(game.users.length)
+                console.log(game.turn)
+                game.turn += 1
+                console.log(game.turn)
+                game.turn %= game.users.length
+                console.log(game.turn)
+                await client.db("memory").collection("game").replaceOne({
+                        _id: new ObjectId(game_id)
+                    },
+                    game
+                )
+                let gameState = processState(game)
+                io.to(game.room_id).emit("emitted_current_state", gameState)
+                enableTurn(game.turn, game.room_id, game.users, io)
+                
+            }, 1300)
+            game.pickedCards[card_id] = 1;
+            game.pickedCards[lastMove.card_id] = 1;
+            let gameState = processState(game)
+            socket.emit("emitted_current_state", gameState)
+            return 
+        }
     }
+
+
     await client.db("memory").collection("game").replaceOne({
             _id: new ObjectId(game_id)
         },
@@ -198,4 +262,4 @@ const pickCard = async(card_id, game_id, socket, io) => {
 }
 
 
-module.exports = {create_game, pickCard, getGameState}
+module.exports = {create_game, pickCard, getGameState, enableTurn}

@@ -4,7 +4,7 @@ const corsOptions = require("../creds/corsOptions");
 const { auth } = require("../apps/firebase")
 const { v4: uuidv4 } = require('uuid');
 const client = require("./mongo_db");
-const { create_game, pickFirstCard, getGameState, pickCard } = require("../games/memoryGame");
+const { create_game, pickFirstCard, getGameState, pickCard, enableTurn } = require("../games/memoryGame");
 const e = require("express");
 const { ObjectId } = require("mongodb");
 
@@ -54,14 +54,11 @@ io.on('connection', async (socket) => {
             { uid: uid },
             { $addToSet: { rooms: room_id } }
         ).then(() => {
-            console.log("joined room " + room_id)
+            console.log("joined users collection " + room_id)
         }).catch(console.error)
-
-        await roomCollection.updateOne(
+        await roomCollection.findOneAndUpdate(
             {
                 room_id: room_id,
-                users: [uid],
-                games: []
             },
             {
                 $addToSet: {
@@ -70,7 +67,7 @@ io.on('connection', async (socket) => {
             }
         )
         .then(() => {
-            console.log("joined room " + room_id)
+            console.log("joined room " + uid)
         }).catch(console.error)
     }
     const updateSockets = async (room_id) => {
@@ -132,42 +129,27 @@ io.on('connection', async (socket) => {
         await updateSockets(room_id)
     })
 
-    const enableTurn = async (turn_id, room_id, users) => {
-        let sockets = await io.in(room_id).fetchSockets()
-        for(let tsocket of sockets) {
-            console.log("checking turn for " + tsocket.uid)
-            if(tsocket.uid == users[turn_id]){
-                console.log("enabling turn for " + tsocket.uid)
-                console.log(tsocket.id)
-                
-                
-                tsocket.emitWithAck("set_turn", 1, (error, response) => {
-                    console.log("response of turn");
-                    if (error) {
-                        console.log("error");
-                        console.log(error);
-                    } else {
-                        console.log("response");
-                        console.log(response);
-                    }
-                })
-            } else {
-                tsocket.emit("set_turn", 0)
-            }
-        }
-
-    }
     socket.on("create_game", async (room_id) => {
         console.log("creating game")
         let {game_id, users} = await create_game(room_id, io)
         await io.to(room_id).emit("game_created", game_id.toString())
     });
     socket.on("join_game_room", async (game_id, callback) => {
-        let game = await client.db("memory")
-        .collection("game")
-        .findOne({_id: new ObjectId(game_id)})
-        if(game){
-            socket.join(game.room_id)
+        console.log("got join request on ", game_id)
+        let gameResult = await client.db("memory")
+            .collection("game")
+            .findOne({_id: new ObjectId(game_id)})
+        if(gameResult){
+            console.log("game is", gameResult)
+            socket.join(gameResult.room_id)
+            let game = await client.db("memory")
+            .collection("game")
+            .findOneAndUpdate(
+                {_id: new ObjectId(game_id)},
+                {$addToSet: {
+                    users: socket.uid
+                }}
+            )
         }
         if(callback instanceof Function){
             callback()
@@ -179,7 +161,7 @@ io.on('connection', async (socket) => {
         .findOne({_id: new ObjectId(game_id)})
         console.log("getting_cturn " , game)
         if(game){
-            await enableTurn(game.turn, game.room_id, game.users)
+            await enableTurn(game.turn, game.room_id, game.users, io)
         }
     })
     socket.on("get_current_state", async(game_id) => {
@@ -193,9 +175,13 @@ io.on('connection', async (socket) => {
             socket.emit("all_games_in_room", room.games)
         }
     })
-    socket.on("pick_card", async (game_id, card_id) => {
+    socket.on("pick_card", async (game_id, cardArray, card_id) => {
         console.log("got card ", game_id, card_id)
-        await pickCard(card_id, game_id, socket, io)
+        await pickCard(card_id, cardArray, game_id, socket, io)
+        let game = await client.db("memory")
+        .collection("game")
+        .findOne({_id: new ObjectId(game_id)})
+        await enableTurn(game.turn, game.room_id, game.users, io)
     })
 });
 module.exports = io
