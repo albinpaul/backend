@@ -23,6 +23,7 @@ jobs:
 
               # Now we have got the access of EC2 and we will start the deploy .
               cd /home/ec2-user/memory/backend &&
-              git checkout main && ls
+              git checkout main && git pull && 
+              sudo systemctl restart memory-backend
               
               '
