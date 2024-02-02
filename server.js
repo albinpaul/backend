@@ -5,7 +5,9 @@ const userControllers = require("./controllers/usersControllers")
 var cors = require('cors')
 const {app, server}= require("./apps/express")
 const io = require("./apps/socket_io")
-require("./middlewares/logToFile")
+if(process.env.ENABLE_LOG){
+  require("./middlewares/logToFile")
+}
 
 app.use(bodyParser.json())
 app.use(cors({
