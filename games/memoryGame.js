@@ -120,6 +120,7 @@ const create_game = async (room_id, io) => {
         .insertOne({
             room_id: room_id,
             state: gameState,
+            criticalSection: 0,
             pickedCards: pickedCards,
             users: room.users,
             turn: 0, // which player is playing
@@ -151,7 +152,6 @@ const create_game = async (room_id, io) => {
 
 
     const enableTurn = async (turn_id, room_id, users, io) => {
-        console.log(io)
         let sockets = await io.in(room_id).fetchSockets()
         for(let tsocket of sockets) {
             console.log("checking turn for " + tsocket.uid)
@@ -192,6 +192,15 @@ const pickCard = async(card_id, cardArray, game_id, socket, io) => {
     // moves: [
 
     // ]
+    console.log(game.pickedCards, card_id)
+    if(game.pickedCards[card_id] == 1){
+        console.log("card already picked", game.pickedCards[card_id])
+        return
+    }
+    if(game.criticalSection){
+        console.log("waiting for setinterval")
+        return
+    }
     if(game.move == 0){
         console.log("first card")
         game.pickedCards[card_id] = 1;
@@ -224,6 +233,7 @@ const pickCard = async(card_id, cardArray, game_id, socket, io) => {
             io.to(game.room_id).emit("emitted_current_state", gameState)
             socket.emit("update_points", game.points[socket.uid])
         } else {
+     
             console.log("different cards picked")
             game.move = 0
             setTimeout(async () => {
@@ -235,6 +245,7 @@ const pickCard = async(card_id, cardArray, game_id, socket, io) => {
                 console.log(game.turn)
                 game.turn %= game.users.length
                 console.log(game.turn)
+                game.criticalSection = 0
                 await client.db("memory").collection("game").replaceOne({
                         _id: new ObjectId(game_id)
                     },
@@ -248,6 +259,15 @@ const pickCard = async(card_id, cardArray, game_id, socket, io) => {
             game.pickedCards[card_id] = 1;
             game.pickedCards[lastMove.card_id] = 1;
             let gameState = processState(game)
+            await client.db("memory").collection("game").findOneAndUpdate({
+                    _id: new ObjectId(game_id)
+                },
+                {   
+                    $set: {
+                        criticalSection: 1
+                    }
+                }
+            )
             socket.emit("emitted_current_state", gameState)
             return 
         }

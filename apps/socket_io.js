@@ -158,7 +158,7 @@ io.on('connection', async (socket) => {
         let game = await client.db("memory")
         .collection("game")
         .findOne({_id: new ObjectId(game_id)})
-        console.log("getting_cturn " , game)
+        socket.emit("update_points", game.points[socket.uid])
         if(game){
             await enableTurn(game.turn, game.room_id, game.users, io)
         }
