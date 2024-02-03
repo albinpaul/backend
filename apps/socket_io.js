@@ -158,9 +158,11 @@ io.on('connection', async (socket) => {
         let game = await client.db("memory")
         .collection("game")
         .findOne({_id: new ObjectId(game_id)})
-        socket.emit("update_points", game.points[socket.uid])
         if(game){
             await enableTurn(game.turn, game.room_id, game.users, io)
+        }
+        if(game.points[socket.uid]){
+            socket.emit("update_points", game.points[socket.uid])
         }
     })
     socket.on("get_current_state", async(game_id) => {
